@@ -60,27 +60,16 @@
     line-height:.9;
     letter-spacing:-.015em;
     color:var(--ivory);
+    font-size: clamp(44px, 6.5vw, 96px);
   }
   .title em{font-style:italic;color:var(--acid)}
-
-  /* DESKTOP: titolo su 2 righe, orizzontale */
   .title .desktop{display:block}
   .title .mobile{display:none}
 
   @media (max-width: 900px){
     .title .desktop{display:none}
     .title .mobile{display:block}
-  }
-
-  /* dimensioni titolo */
-  .title{
-    font-size: clamp(44px, 6.5vw, 96px);
-  }
-  @media (max-width: 900px){
-    .title{
-      font-size: clamp(42px, 8.6vw, 72px);
-      line-height:.9;
-    }
+    .title{ font-size: clamp(42px, 8.6vw, 72px); line-height:.9; }
   }
 
   .ctl{pointer-events:auto;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
@@ -91,6 +80,8 @@
     background:transparent;color:var(--ivory);
     transition:all .2s ease;
     font-family:"JetBrains Mono",monospace;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   .pill:hover{background:var(--ivory);color:var(--bg)}
   .pill.live{background:var(--acid);border-color:var(--acid);color:var(--bg)}
@@ -134,6 +125,17 @@
   .cross.tr{top:12px;right:12px}
   .cross.bl{bottom:12px;left:12px}
   .cross.br{bottom:12px;right:12px}
+
+  /* debug overlay per capire se l'audio parte */
+  .debug{
+    position:fixed;bottom:40px;left:50%;transform:translateX(-50%);
+    z-index:50;pointer-events:none;
+    font-size:9px;letter-spacing:.26em;text-transform:uppercase;
+    color:var(--acid);background:rgba(0,0,0,.6);padding:6px 12px;border-radius:999px;
+    opacity:0;transition:opacity .3s;
+    font-family:"JetBrains Mono",monospace;
+  }
+  .debug.show{opacity:1}
 </style>
 </head>
 <body>
@@ -170,24 +172,33 @@
 
   <div class="row footer">
     <div></div>
-    <div class="hint-bottom">click anywhere to land a bird</div>
+    <div class="hint-bottom">tap anywhere to land a bird</div>
   </div>
 </div>
 
 <div class="hint" id="hint">
   <div class="big">press <em>start audio</em> to wake the wires</div>
-  <div class="small">click on cables · birds will land · each one sings</div>
+  <div class="small">tap on cables · birds will land · each one sings</div>
 </div>
+
+<div class="debug" id="debug">audio: locked</div>
 
 <script>
 /* =============================================================
-   hyperfauna — birds on wires v3
+   hyperfauna — birds on wires (ios patch)
    ============================================================= */
 
 const cvs = document.getElementById("stage");
 const ctx = cvs.getContext("2d");
+const debug = document.getElementById("debug");
 let W, H, DPR;
 let isMobile = false;
+
+function setDebug(msg, show=true){
+  debug.textContent = "audio: " + msg;
+  if (show) debug.classList.add("show");
+  else debug.classList.remove("show");
+}
 
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -200,21 +211,48 @@ function resize(){
 }
 window.addEventListener("resize", resize);
 
-/* ---------- AUDIO ---------- */
-let audioCtx, master, compressor, ready = false;
+/* ---------- AUDIO (iOS-safe) ---------- */
+let audioCtx = null, master = null, compressor = null, unlocked = false;
 const SCALE = [0, 3, 5, 7, 10];
 const ROOT = 220;
 const mtof = s => ROOT * Math.pow(2, s/12);
 
-function initAudio(){
-  if (ready) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  compressor = audioCtx.createDynamicsCompressor();
-  compressor.threshold.value = -16; compressor.knee.value = 22;
-  compressor.ratio.value = 7; compressor.attack.value = .003; compressor.release.value = .2;
-  master = audioCtx.createGain(); master.gain.value = 0.72;
-  compressor.connect(master).connect(audioCtx.destination);
-  ready = true;
+/* trick iOS: alla prima interazione suona un buffer silenzioso
+   per "sbloccare" l'audio context, poi possiamo suonare quando vogliamo */
+function unlockAudio(){
+  if (unlocked) return true;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC){ setDebug("not supported"); return false; }
+    audioCtx = new AC();
+
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.value = -16; compressor.knee.value = 22;
+    compressor.ratio.value = 7; compressor.attack.value = .003; compressor.release.value = .2;
+    master = audioCtx.createGain(); master.gain.value = 0.72;
+    compressor.connect(master).connect(audioCtx.destination);
+
+    // buffer silenzioso suonato IMMEDIATAMENTE: sblocca iOS
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    if (src.start) src.start(0); else src.noteOn(0);
+
+    // resume (richiesto da Chrome/Safari)
+    if (audioCtx.state === "suspended"){
+      audioCtx.resume();
+    }
+
+    unlocked = true;
+    setDebug("unlocked · state: " + audioCtx.state);
+    // nascondi debug dopo 2s
+    setTimeout(()=>debug.classList.remove("show"), 2000);
+    return true;
+  } catch(e){
+    setDebug("error: " + e.message);
+    return false;
+  }
 }
 
 function playKick(t){
@@ -252,7 +290,7 @@ function playStab(t, semi){
   o1.start(t); o2.start(t); o1.stop(t+0.65); o2.stop(t+0.65);
 }
 function playHat(t){
-  const n = audioCtx.sampleRate * 0.12;
+  const n = Math.floor(audioCtx.sampleRate * 0.12);
   const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
   const d = buf.getChannelData(0);
   for (let i=0;i<n;i++) d[i] = Math.random()*2-1;
@@ -277,8 +315,11 @@ function playPad(t, semi){
 }
 
 function triggerWire(i, pitchSeed){
-  if (!ready) return;
-  const t = audioCtx.currentTime + 0.01;
+  if (!unlocked || !audioCtx) return;
+  // se il context si è sospeso (es. background tab su iOS), riattiva
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  // tempo immediato, senza micro-delay (iOS non ama)
+  const t = audioCtx.currentTime;
   const semi = SCALE[Math.floor(pitchSeed*SCALE.length) % SCALE.length];
   switch(i){
     case 0: playKick(t); break;
@@ -295,7 +336,7 @@ const VOICES = ["kick","bass","stab","hat","pad"];
 
 function buildScene(){
   wires = []; poles = []; birds = []; incoming = []; ripples = [];
-  const horizon = H*0.68; // più in basso: lascia più spazio al titolo sopra
+  const horizon = H*0.68;
   const poleX1 = -20, poleX2 = W*0.48, poleX3 = W+20;
   poles = [
     {x: poleX1, top: H*0.08, bottom: H*0.94},
@@ -321,7 +362,6 @@ function spawnBirdTo(wi, xTarget){
   const w = wires[wi];
   const yTarget = wireY(w, xTarget);
   const fromLeft = Math.random() < 0.5;
-  // uccelli più grandi
   const baseSize = isMobile ? 9 : 11;
   incoming.push({
     x: fromLeft ? -30 : W+30,
@@ -429,7 +469,6 @@ function drawWires(){
     }
     ctx.stroke();
 
-    // label a DESTRA, dove non interferisce col titolo
     ctx.fillStyle = "rgba(242,239,230,.55)";
     ctx.font = "9px 'JetBrains Mono', monospace";
     const labelText = String(i+1).padStart(2,"0") + " · " + w.label.toUpperCase();
@@ -540,40 +579,71 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
-cvs.addEventListener("click", (e)=>{
-  if (!ready) return;
+/* ---------- INTERAZIONE (iOS-safe) ---------- */
+/* gestori multipli per coprire iOS: pointerdown, touchstart, click */
+function handleCanvasTap(clientX, clientY){
+  if (!unlocked) return;
   let best=-1, bestD=1e9;
   for (let i=0;i<wires.length;i++){
-    const y = wireY(wires[i], e.clientX);
-    const d = Math.abs(y - e.clientY);
+    const y = wireY(wires[i], clientX);
+    const d = Math.abs(y - clientY);
     if (d < bestD){ bestD = d; best = i; }
   }
-  if (best>=0) spawnBirdTo(best, e.clientX);
+  if (best>=0) spawnBirdTo(best, clientX);
+}
+
+cvs.addEventListener("pointerdown", (e)=>{
+  handleCanvasTap(e.clientX, e.clientY);
 });
 
 const btn = document.getElementById("toggle");
 const led = document.getElementById("led");
 const hint = document.getElementById("hint");
-btn.addEventListener("click", async ()=>{
-  if (!ready){
-    initAudio();
-    await audioCtx.resume();
-    btn.textContent = "■ stop audio";
-    btn.classList.add("live");
-    led.classList.add("on");
-    hint.classList.add("hide");
+
+function toggleAudio(){
+  if (!unlocked){
+    const ok = unlockAudio();
+    if (ok){
+      btn.textContent = "■ stop audio";
+      btn.classList.add("live");
+      led.classList.add("on");
+      hint.classList.add("hide");
+      // suono di conferma: un piccolo kick per dimostrare che funziona
+      try {
+        const t = audioCtx.currentTime;
+        playPad(t, 0);
+      } catch(e){ setDebug("play error: " + e.message); }
+    }
   } else {
     if (audioCtx.state === "running"){
-      await audioCtx.suspend();
+      audioCtx.suspend();
       btn.textContent = "▶ resume";
       btn.classList.remove("live");
       led.classList.remove("on");
     } else {
-      await audioCtx.resume();
+      audioCtx.resume();
       btn.textContent = "■ stop audio";
       btn.classList.add("live");
       led.classList.add("on");
     }
+  }
+}
+
+/* uso pointerdown che su iOS è più reattivo di click */
+btn.addEventListener("pointerdown", (e)=>{
+  e.preventDefault();
+  toggleAudio();
+});
+/* fallback click per sicurezza */
+btn.addEventListener("click", (e)=>{
+  e.preventDefault();
+  if (!unlocked) toggleAudio();
+});
+
+/* riattiva context se la pagina torna visibile (iOS lo sospende al cambio tab) */
+document.addEventListener("visibilitychange", ()=>{
+  if (!document.hidden && audioCtx && audioCtx.state === "suspended" && unlocked){
+    audioCtx.resume();
   }
 });
 
