@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>hyperfauna — birds on wires</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,144,300;1,144,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0B0B;
+    --ivory:#F2EFE6;
+    --acid:#C6FF3D;
+    --mute: rgba(242,239,230,.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--ivory);overflow:hidden;font-family:"JetBrains Mono",monospace}
+  body{
+    background:
+      radial-gradient(circle at 78% 22%, rgba(198,255,61,.10), transparent 45%),
+      radial-gradient(circle at 15% 85%, rgba(198,255,61,.04), transparent 55%),
+      var(--bg);
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;opacity:.25;mix-blend-mode:overlay;z-index:40;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:41;opacity:.07;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0, transparent 2px,
+      rgba(255,255,255,.7) 2px, rgba(255,255,255,.7) 3px
+    );
+    mix-blend-mode:overlay;
+  }
+
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:10}
+
+  .chrome{
+    position:fixed;inset:0;pointer-events:none;z-index:20;
+    padding:26px 30px;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .row{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+
+  .brand{
+    font-family:"JetBrains Mono",monospace;
+    font-size:11px;letter-spacing:.24em;text-transform:lowercase;
+    color:var(--ivory);
+    line-height:1.6;
+  }
+  .brand .by{color:var(--mute)}
+  .brand .ac{color:var(--acid)}
+
+  .title-wrap{margin-top:34px;max-width:70%}
+  .title{
+    font-family:"Fraunces",serif;font-style:italic;font-weight:300;
+    font-size: clamp(42px, 8.6vw, 124px);
+    line-height:.9;
+    letter-spacing:-.015em;
+    color:var(--ivory);
+  }
+  .title em{font-style:italic;color:var(--acid)}
+
+  .ctl{pointer-events:auto;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+  .pill{
+    cursor:pointer;user-select:none;
+    border:1px solid var(--ivory);padding:11px 16px;border-radius:999px;
+    font-size:10px;letter-spacing:.26em;text-transform:uppercase;
+    background:transparent;color:var(--ivory);
+    transition:all .2s ease;
+    font-family:"JetBrains Mono",monospace;
+  }
+  .pill:hover{background:var(--ivory);color:var(--bg)}
+  .pill.live{background:var(--acid);border-color:var(--acid);color:var(--bg)}
+  .pill.live:hover{background:var(--ivory);border-color:var(--ivory)}
+
+  .readout{
+    display:flex;gap:14px;align-items:center;
+    font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--mute);
+  }
+  .readout span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--mute);display:inline-block;transition:all .3s}
+  .dot.on{background:var(--acid);box-shadow:0 0 12px var(--acid)}
+
+  .footer{align-items:flex-end}
+  .hint-bottom{
+    font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--mute);
+    text-align:right;
+  }
+
+  .hint{
+    position:fixed;left:50%;top:58%;transform:translate(-50%,-50%);z-index:25;
+    text-align:center;pointer-events:none;transition:opacity .6s ease;
+  }
+  .hint.hide{opacity:0}
+  .hint .big{
+    font-family:"Fraunces",serif;font-style:italic;font-weight:300;
+    font-size:clamp(22px,3.2vw,34px);color:var(--ivory);
+  }
+  .hint .big em{color:var(--acid)}
+  .hint .small{
+    font-size:9px;letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-top:12px;
+    font-family:"JetBrains Mono",monospace;
+  }
+
+  .cross{position:fixed;width:14px;height:14px;z-index:22;pointer-events:none}
+  .cross::before,.cross::after{content:"";position:absolute;background:var(--acid)}
+  .cross::before{left:0;top:50%;width:100%;height:1px;transform:translateY(-50%)}
+  .cross::after{top:0;left:50%;height:100%;width:1px;transform:translateX(-50%)}
+  .cross.tl{top:12px;left:12px}
+  .cross.tr{top:12px;right:12px}
+  .cross.bl{bottom:12px;left:12px}
+  .cross.br{bottom:12px;right:12px}
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div class="cross tl"></div><div class="cross tr"></div>
+<div class="cross bl"></div><div class="cross br"></div>
+
+<div class="chrome">
+  <div class="row">
+    <div style="max-width:70%">
+      <div class="brand">
+        <div><span class="ac">hyperfauna</span></div>
+        <div class="by">by motel studio</div>
+      </div>
+      <div class="title-wrap">
+        <h1 class="title">every <em>bird</em><br/>is a <em>note.</em></h1>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <button id="toggle" class="pill">▶ start audio</button>
+      <div class="readout">
+        <span><span class="dot" id="led"></span>live</span>
+        <span id="bpm">120 bpm</span>
+        <span id="count">00 birds</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row footer">
+    <div></div>
+    <div class="hint-bottom">click anywhere to land a bird</div>
+  </div>
+</div>
+
+<div class="hint" id="hint">
+  <div class="big">press <em>start audio</em> to wake the wires</div>
+  <div class="small">click on cables · birds will land · each one sings</div>
+</div>
+
+<script>
+/* =============================================================
+   hyperfauna — birds on wires
+   ============================================================= */
+
+const cvs = document.getElementById("stage");
+const ctx = cvs.getContext("2d");
+let W, H, DPR;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cvs.width = W*DPR; cvs.height = H*DPR;
+  cvs.style.width = W+"px"; cvs.style.height = H+"px";
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  buildScene();
+}
+window.addEventListener("resize", resize);
+
+/* ---------- AUDIO ---------- */
+let audioCtx, master, compressor, ready = false;
+const SCALE = [0, 3, 5, 7, 10];
+const ROOT = 220;
+const mtof = s => ROOT * Math.pow(2, s/12);
+
+function initAudio(){
+  if (ready) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -16; compressor.knee.value = 22;
+  compressor.ratio.value = 7; compressor.attack.value = .003; compressor.release.value = .2;
+  master = audioCtx.createGain(); master.gain.value = 0.72;
+  compressor.connect(master).connect(audioCtx.destination);
+  ready = true;
+}
+
+function playKick(t){
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(38, t+0.2);
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(1.1, t+0.005);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.38);
+  o.connect(g).connect(compressor);
+  o.start(t); o.stop(t+0.42);
+}
+function playBass(t, semi){
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+  o.type = "sawtooth"; o.frequency.value = mtof(semi-12);
+  f.type="lowpass"; f.frequency.value=650; f.Q.value=10;
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.55, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.5);
+  o.connect(f).connect(g).connect(compressor);
+  o.start(t); o.stop(t+0.55);
+}
+function playStab(t, semi){
+  const o1 = audioCtx.createOscillator(), o2 = audioCtx.createOscillator();
+  const g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+  o1.type="sawtooth"; o2.type="square";
+  o1.frequency.value = mtof(semi); o2.frequency.value = mtof(semi)*1.007;
+  f.type="lowpass"; f.Q.value=14;
+  f.frequency.setValueAtTime(2600, t);
+  f.frequency.exponentialRampToValueAtTime(450, t+0.4);
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.32, t+0.005);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.6);
+  o1.connect(f); o2.connect(f); f.connect(g).connect(compressor);
+  o1.start(t); o2.start(t); o1.stop(t+0.65); o2.stop(t+0.65);
+}
+function playHat(t){
+  const n = audioCtx.sampleRate * 0.12;
+  const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<n;i++) d[i] = Math.random()*2-1;
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const f = audioCtx.createBiquadFilter(); f.type="highpass"; f.frequency.value=7500;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.32, t+0.002);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.08);
+  src.connect(f).connect(g).connect(compressor);
+  src.start(t); src.stop(t+0.12);
+}
+function playPad(t, semi){
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+  o.type="triangle"; o.frequency.value = mtof(semi+12);
+  f.type="lowpass"; f.frequency.value=2000;
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(0.2, t+0.3);
+  g.gain.linearRampToValueAtTime(0.001, t+1.8);
+  o.connect(f).connect(g).connect(compressor);
+  o.start(t); o.stop(t+1.9);
+}
+
+function triggerWire(i, pitchSeed){
+  if (!ready) return;
+  const t = audioCtx.currentTime + 0.01;
+  const semi = SCALE[Math.floor(pitchSeed*SCALE.length) % SCALE.length];
+  switch(i){
+    case 0: playKick(t); break;
+    case 1: playBass(t, semi); break;
+    case 2: playStab(t, semi+12); break;
+    case 3: playHat(t); break;
+    case 4: playPad(t, semi); break;
+  }
+}
+
+/* ---------- SCENA ---------- */
+let wires = [], poles = [], birds = [], incoming = [], ripples = [];
+const VOICES = ["kick","bass","stab","hat","pad"];
+
+function buildScene(){
+  wires = []; poles = []; birds = []; incoming = []; ripples = [];
+  const horizon = H*0.62;
+  const poleX1 = -20, poleX2 = W*0.48, poleX3 = W+20;
+  poles = [
+    {x: poleX1, top: H*0.06, bottom: H*0.94},
+    {x: poleX2, top: H*0.14, bottom: H*0.80},
+    {x: poleX3, top: H*0.06, bottom: H*0.94},
+  ];
+  const lines = 5;
+  // spacing aumentato per non sovrapporre le label
+  for (let i=0;i<lines;i++){
+    const y = horizon + (i-2)*44;
+    wires.push({
+      y, sag: 24 + i*3,
+      x1: poleX1, x2: poleX3,
+      voice: i, label: VOICES[i],
+    });
+  }
+}
+
+function wireY(w,x){ const t=(x-w.x1)/(w.x2-w.x1); return w.y + Math.sin(Math.PI*t)*w.sag; }
+function wireSlope(w,x){ const t=(x-w.x1)/(w.x2-w.x1); return Math.cos(Math.PI*t)*(Math.PI/(w.x2-w.x1))*w.sag; }
+
+function spawnBirdTo(wi, xTarget){
+  const w = wires[wi];
+  const yTarget = wireY(w, xTarget);
+  const fromLeft = Math.random() < 0.5;
+  incoming.push({
+    x: fromLeft ? -30 : W+30,
+    y: yTarget - 180 - Math.random()*120,
+    tx: xTarget, ty: yTarget,
+    wire: wi, t: 0, dur: 55 + Math.random()*25,
+    flap: Math.random()*6.28, size: 7 + Math.random()*3,
+  });
+}
+
+function landBird(b){
+  const w = wires[b.wire];
+  birds.push({
+    x: b.tx, y: b.ty, wire: b.wire,
+    slope: wireSlope(w, b.tx), size: b.size,
+    facing: Math.random()<.5 ? 1 : -1,
+    bob: Math.random()*6.28,
+  });
+  ripples.push({x:b.tx, y:b.ty, r:0, a:1});
+  triggerWire(b.wire, b.tx / W);
+  document.getElementById("count").textContent =
+    String(birds.length).padStart(2,"0") + " birds";
+}
+
+let lastBeat = 0;
+function autoSpawn(now){
+  if (now - lastBeat > 500){
+    lastBeat = now;
+    if (Math.random() < 0.55){
+      const wi = Math.floor(Math.random()*wires.length);
+      const w = wires[wi];
+      const x = w.x1 + 80 + Math.random()*(w.x2 - w.x1 - 160);
+      spawnBirdTo(wi, x);
+    }
+    if (birds.length > 10 && Math.random() < 0.3){
+      const idx = Math.floor(Math.random()*birds.length);
+      const b = birds[idx];
+      incoming.push({
+        x:b.x, y:b.y,
+        tx: b.x + (Math.random()<.5?-1:1)*(W+100),
+        ty: -80 - Math.random()*120,
+        wire:-1, t:0, dur: 70, flap: Math.random()*6, size:b.size, leaving:true
+      });
+      birds.splice(idx,1);
+      document.getElementById("count").textContent =
+        String(birds.length).padStart(2,"0") + " birds";
+    }
+  }
+}
+
+/* ---------- DISEGNO ---------- */
+function drawAtmosphere(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0, "rgba(198,255,61,0.04)");
+  g.addColorStop(.55, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(198,255,61,0.03)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = "rgba(242,239,230,.08)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H*0.78); ctx.lineTo(W, H*0.78); ctx.stroke();
+
+  ctx.fillStyle = "rgba(198,255,61,0.9)";
+  ctx.beginPath(); ctx.arc(W*0.82, H*0.22, 5, 0, Math.PI*2); ctx.fill();
+  const m = ctx.createRadialGradient(W*0.82, H*0.22, 4, W*0.82, H*0.22, 90);
+  m.addColorStop(0,"rgba(198,255,61,.35)"); m.addColorStop(1,"rgba(198,255,61,0)");
+  ctx.fillStyle = m;
+  ctx.beginPath(); ctx.arc(W*0.82, H*0.22, 90, 0, Math.PI*2); ctx.fill();
+}
+
+function drawPoles(){
+  ctx.strokeStyle = "rgba(242,239,230,.9)";
+  ctx.fillStyle = "rgba(242,239,230,.9)";
+  for (const p of poles){
+    ctx.lineWidth = p.x>0 && p.x<W ? 1.8 : 2.2;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.top); ctx.lineTo(p.x, p.bottom);
+    ctx.stroke();
+    const crossY = p.top + 20;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(p.x-24, crossY); ctx.lineTo(p.x+24, crossY);
+    ctx.stroke();
+    for (const dx of [-18,0,18]){
+      ctx.beginPath();
+      ctx.arc(p.x+dx, crossY-4, 2.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawWires(){
+  for (let i=0;i<wires.length;i++){
+    const w = wires[i];
+    // cavo
+    ctx.strokeStyle = "rgba(242,239,230,.85)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const steps = 80;
+    for (let s=0;s<=steps;s++){
+      const x = w.x1 + (w.x2-w.x1)*(s/steps);
+      const y = wireY(w,x);
+      if (s===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // label DENTRO il palo (non più attaccata al cavo) — niente sovrapposizioni
+    // posizionata leggermente sopra la curva, con padding
+    ctx.fillStyle = "rgba(242,239,230,.55)";
+    ctx.font = "9px 'JetBrains Mono', monospace";
+    const labelText = String(i+1).padStart(2,"0") + " · " + w.label.toUpperCase();
+    ctx.fillText(labelText, 30, w.y - 10);
+    // tick acid per tutti i cavi
+    ctx.fillStyle = "#C6FF3D";
+    ctx.fillRect(22, w.y - 13, 4, 4);
+  }
+}
+
+function drawRipples(){
+  for (let i=ripples.length-1;i>=0;i--){
+    const r = ripples[i];
+    r.r += 1.6; r.a *= 0.93;
+    if (r.a < 0.03){ ripples.splice(i,1); continue; }
+    ctx.strokeStyle = `rgba(198,255,61,${r.a})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(242,239,230,${r.a*0.5})`;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r*0.55, 0, Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+function drawBird(x,y,size,slope,facing,flap){
+  ctx.save();
+  ctx.translate(x, y - size*0.9);
+  ctx.rotate(Math.atan(slope));
+  ctx.scale(facing, 1);
+  ctx.fillStyle = "#F2EFE6";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size*0.9, size*0.55, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  ctx.arc(size*0.7, -size*0.35, size*0.38, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#C6FF3D";
+  ctx.beginPath();
+  ctx.moveTo(size*1.05, -size*0.35);
+  ctx.lineTo(size*1.5, -size*0.25);
+  ctx.lineTo(size*1.05, -size*0.18);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#F2EFE6";
+  ctx.beginPath();
+  ctx.moveTo(-size*0.85, -size*0.05);
+  ctx.lineTo(-size*1.5, -size*0.5);
+  ctx.lineTo(-size*0.85, size*0.15);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#F2EFE6"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-size*0.1, size*0.55); ctx.lineTo(-size*0.1, size*0.92);
+  ctx.moveTo(size*0.25, size*0.55); ctx.lineTo(size*0.25, size*0.92);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFlying(b){
+  b.flap += 0.38;
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  const dir = (b.tx - b.x) >= 0 ? 1 : -1;
+  ctx.scale(dir, 1);
+  ctx.fillStyle = "#F2EFE6";
+  const s = b.size;
+  ctx.beginPath();
+  ctx.ellipse(0,0, s*0.9, s*0.35, 0, 0, Math.PI*2); ctx.fill();
+  const wing = Math.sin(b.flap)*s*0.9;
+  ctx.strokeStyle="#F2EFE6"; ctx.lineWidth=1.4;
+  ctx.beginPath();
+  ctx.moveTo(-s*0.2, -s*0.05); ctx.lineTo(-s*1.1, -s*0.5 - wing);
+  ctx.moveTo( s*0.2, -s*0.05); ctx.lineTo( s*1.1, -s*0.5 - wing);
+  ctx.stroke();
+  ctx.restore();
+}
+
+let lastT = performance.now();
+function frame(now){
+  const dt = now - lastT; lastT = now;
+  ctx.clearRect(0,0,W,H);
+  drawAtmosphere();
+  drawPoles();
+  drawWires();
+
+  for (let i=incoming.length-1;i>=0;i--){
+    const b = incoming[i];
+    b.t += dt/16.6;
+    const p = Math.min(1, b.t/b.dur);
+    b.x = b.x + (b.tx - b.x)*0.045;
+    b.y = b.y + (b.ty - b.y)*0.045;
+    const arc = Math.sin(p*Math.PI) * (b.leaving ? -40 : 26);
+    drawFlying({...b, y: b.y - arc});
+    if (Math.hypot(b.tx-b.x, b.ty-b.y) < 3 || p>=1){
+      if (!b.leaving) landBird(b);
+      incoming.splice(i,1);
+    }
+  }
+
+  for (const b of birds){
+    b.bob += 0.045;
+    const flap = b.bob + Math.sin(b.bob*2)*0.3;
+    drawBird(b.x, b.y, b.size, b.slope, b.facing, flap);
+  }
+
+  drawRipples();
+  autoSpawn(now);
+  requestAnimationFrame(frame);
+}
+
+cvs.addEventListener("click", (e)=>{
+  if (!ready) return;
+  let best=-1, bestD=1e9;
+  for (let i=0;i<wires.length;i++){
+    const y = wireY(wires[i], e.clientX);
+    const d = Math.abs(y - e.clientY);
+    if (d < bestD){ bestD = d; best = i; }
+  }
+  if (best>=0) spawnBirdTo(best, e.clientX);
+});
+
+const btn = document.getElementById("toggle");
+const led = document.getElementById("led");
+const hint = document.getElementById("hint");
+btn.addEventListener("click", async ()=>{
+  if (!ready){
+    initAudio();
+    await audioCtx.resume();
+    btn.textContent = "■ stop audio";
+    btn.classList.add("live");
+    led.classList.add("on");
+    hint.classList.add("hide");
+  } else {
+    if (audioCtx.state === "running"){
+      await audioCtx.suspend();
+      btn.textContent = "▶ resume";
+      btn.classList.remove("live");
+      led.classList.remove("on");
+    } else {
+      await audioCtx.resume();
+      btn.textContent = "■ stop audio";
+      btn.classList.add("live");
+      led.classList.add("on");
+    }
+  }
+});
+
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
