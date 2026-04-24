@@ -54,15 +54,34 @@
   .brand .by{color:var(--mute)}
   .brand .ac{color:var(--acid)}
 
-  .title-wrap{margin-top:34px;max-width:70%}
+  .title-wrap{margin-top:34px}
   .title{
     font-family:"Fraunces",serif;font-style:italic;font-weight:300;
-    font-size: clamp(42px, 8.6vw, 124px);
     line-height:.9;
     letter-spacing:-.015em;
     color:var(--ivory);
   }
   .title em{font-style:italic;color:var(--acid)}
+
+  /* DESKTOP: titolo su 2 righe, orizzontale */
+  .title .desktop{display:block}
+  .title .mobile{display:none}
+
+  @media (max-width: 900px){
+    .title .desktop{display:none}
+    .title .mobile{display:block}
+  }
+
+  /* dimensioni titolo */
+  .title{
+    font-size: clamp(44px, 6.5vw, 96px);
+  }
+  @media (max-width: 900px){
+    .title{
+      font-size: clamp(42px, 8.6vw, 72px);
+      line-height:.9;
+    }
+  }
 
   .ctl{pointer-events:auto;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
   .pill{
@@ -94,6 +113,7 @@
   .hint{
     position:fixed;left:50%;top:58%;transform:translate(-50%,-50%);z-index:25;
     text-align:center;pointer-events:none;transition:opacity .6s ease;
+    padding:0 20px;
   }
   .hint.hide{opacity:0}
   .hint .big{
@@ -125,13 +145,16 @@
 
 <div class="chrome">
   <div class="row">
-    <div style="max-width:70%">
+    <div style="max-width:75%">
       <div class="brand">
         <div><span class="ac">hyperfauna</span></div>
         <div class="by">by motel studio</div>
       </div>
       <div class="title-wrap">
-        <h1 class="title">every <em>bird</em><br/>is a <em>note.</em></h1>
+        <h1 class="title">
+          <span class="desktop">every <em>bird</em><br/>is a <em>note.</em></span>
+          <span class="mobile">every<br/><em>bird</em><br/>is a<br/><em>note.</em></span>
+        </h1>
       </div>
     </div>
 
@@ -158,16 +181,18 @@
 
 <script>
 /* =============================================================
-   hyperfauna — birds on wires
+   hyperfauna — birds on wires v3
    ============================================================= */
 
 const cvs = document.getElementById("stage");
 const ctx = cvs.getContext("2d");
 let W, H, DPR;
+let isMobile = false;
 
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
+  isMobile = W < 900;
   cvs.width = W*DPR; cvs.height = H*DPR;
   cvs.style.width = W+"px"; cvs.style.height = H+"px";
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -270,17 +295,17 @@ const VOICES = ["kick","bass","stab","hat","pad"];
 
 function buildScene(){
   wires = []; poles = []; birds = []; incoming = []; ripples = [];
-  const horizon = H*0.62;
+  const horizon = H*0.68; // più in basso: lascia più spazio al titolo sopra
   const poleX1 = -20, poleX2 = W*0.48, poleX3 = W+20;
   poles = [
-    {x: poleX1, top: H*0.06, bottom: H*0.94},
-    {x: poleX2, top: H*0.14, bottom: H*0.80},
-    {x: poleX3, top: H*0.06, bottom: H*0.94},
+    {x: poleX1, top: H*0.08, bottom: H*0.94},
+    {x: poleX2, top: H*0.18, bottom: H*0.82},
+    {x: poleX3, top: H*0.08, bottom: H*0.94},
   ];
   const lines = 5;
-  // spacing aumentato per non sovrapporre le label
+  const spacing = isMobile ? 34 : 44;
   for (let i=0;i<lines;i++){
-    const y = horizon + (i-2)*44;
+    const y = horizon + (i-2)*spacing;
     wires.push({
       y, sag: 24 + i*3,
       x1: poleX1, x2: poleX3,
@@ -296,12 +321,14 @@ function spawnBirdTo(wi, xTarget){
   const w = wires[wi];
   const yTarget = wireY(w, xTarget);
   const fromLeft = Math.random() < 0.5;
+  // uccelli più grandi
+  const baseSize = isMobile ? 9 : 11;
   incoming.push({
     x: fromLeft ? -30 : W+30,
     y: yTarget - 180 - Math.random()*120,
     tx: xTarget, ty: yTarget,
     wire: wi, t: 0, dur: 55 + Math.random()*25,
-    flap: Math.random()*6.28, size: 7 + Math.random()*3,
+    flap: Math.random()*6.28, size: baseSize + Math.random()*3,
   });
 }
 
@@ -357,7 +384,7 @@ function drawAtmosphere(){
   ctx.strokeStyle = "rgba(242,239,230,.08)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, H*0.78); ctx.lineTo(W, H*0.78); ctx.stroke();
+  ctx.moveTo(0, H*0.82); ctx.lineTo(W, H*0.82); ctx.stroke();
 
   ctx.fillStyle = "rgba(198,255,61,0.9)";
   ctx.beginPath(); ctx.arc(W*0.82, H*0.22, 5, 0, Math.PI*2); ctx.fill();
@@ -391,7 +418,6 @@ function drawPoles(){
 function drawWires(){
   for (let i=0;i<wires.length;i++){
     const w = wires[i];
-    // cavo
     ctx.strokeStyle = "rgba(242,239,230,.85)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -403,15 +429,15 @@ function drawWires(){
     }
     ctx.stroke();
 
-    // label DENTRO il palo (non più attaccata al cavo) — niente sovrapposizioni
-    // posizionata leggermente sopra la curva, con padding
+    // label a DESTRA, dove non interferisce col titolo
     ctx.fillStyle = "rgba(242,239,230,.55)";
     ctx.font = "9px 'JetBrains Mono', monospace";
     const labelText = String(i+1).padStart(2,"0") + " · " + w.label.toUpperCase();
-    ctx.fillText(labelText, 30, w.y - 10);
-    // tick acid per tutti i cavi
+    const textWidth = ctx.measureText(labelText).width;
+    const labelX = W - textWidth - 30;
+    ctx.fillText(labelText, labelX, w.y - 10);
     ctx.fillStyle = "#C6FF3D";
-    ctx.fillRect(22, w.y - 13, 4, 4);
+    ctx.fillRect(labelX - 10, w.y - 13, 4, 4);
   }
 }
 
@@ -454,10 +480,10 @@ function drawBird(x,y,size,slope,facing,flap){
   ctx.lineTo(-size*1.5, -size*0.5);
   ctx.lineTo(-size*0.85, size*0.15);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = "#F2EFE6"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "#F2EFE6"; ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(-size*0.1, size*0.55); ctx.lineTo(-size*0.1, size*0.92);
-  ctx.moveTo(size*0.25, size*0.55); ctx.lineTo(size*0.25, size*0.92);
+  ctx.moveTo(-size*0.1, size*0.55); ctx.lineTo(-size*0.1, size*0.95);
+  ctx.moveTo(size*0.25, size*0.55); ctx.lineTo(size*0.25, size*0.95);
   ctx.stroke();
   ctx.restore();
 }
@@ -473,7 +499,7 @@ function drawFlying(b){
   ctx.beginPath();
   ctx.ellipse(0,0, s*0.9, s*0.35, 0, 0, Math.PI*2); ctx.fill();
   const wing = Math.sin(b.flap)*s*0.9;
-  ctx.strokeStyle="#F2EFE6"; ctx.lineWidth=1.4;
+  ctx.strokeStyle="#F2EFE6"; ctx.lineWidth=1.5;
   ctx.beginPath();
   ctx.moveTo(-s*0.2, -s*0.05); ctx.lineTo(-s*1.1, -s*0.5 - wing);
   ctx.moveTo( s*0.2, -s*0.05); ctx.lineTo( s*1.1, -s*0.5 - wing);
